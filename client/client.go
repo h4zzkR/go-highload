@@ -10,6 +10,10 @@ import (
 
 const SERVER = "http://localhost:8080"
 
+/*
+*
+Client code for POST-requests.
+*/
 func main() {
 	data := url.Values{
 		"name": {"John Doe"},

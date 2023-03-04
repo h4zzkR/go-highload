@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"time"
 )
 
@@ -64,10 +65,11 @@ func name(w http.ResponseWriter, req *http.Request) {
 }
 
 func main() {
+	portToListen := os.Getenv("SERVER_PORT")
 
 	http.HandleFunc("/date", date)
 	http.HandleFunc("/name", name)
 
-	fmt.Println("Server is listening...")
-	http.ListenAndServe(":8080", nil)
+	fmt.Printf("Server is listening %s...\n", portToListen)
+	http.ListenAndServe(":"+portToListen, nil)
 }
