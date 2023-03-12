@@ -43,10 +43,10 @@ Percentage of the requests served within a certain time (ms)
  100%    260 (longest request)
 `
 
-Requests per second:    3069.42 [#/sec] (mean)
-Time per request:       114.028 [ms] (mean)
-Time per request:       0.326 [ms] (mean, across all concurrent requests)
-Transfer rate:          959611.87 [Kbytes/sec] received
+1. Requests per second:    3069.42 [#/sec] (mean)
+1. Time per request:       114.028 [ms] (mean)
+1. Time per request:       0.326 [ms] (mean, across all concurrent requests)
+1. Transfer rate:          959611.87 [Kbytes/sec] received
 
 ## case2
 - 2 go servers (8080,8081)
@@ -92,10 +92,11 @@ Percentage of the requests served within a certain time (ms)
  100%    798 (longest request)
 `
 
-Requests per second:    937.38 [#/sec] (mean)
-Time per request:       373.382 [ms] (mean)
-Time per request:       1.067 [ms] (mean, across all concurrent requests)
-Transfer rate:          293057.70 [Kbytes/sec] received
+1. Requests per second:    937.38 [#/sec] (mean)
+1. Time per request:       373.382 [ms] (mean)
+1. Time per request:       1.067 [ms] (mean, across all concurrent requests)
+1. Transfer rate:          293057.70 [Kbytes/sec] received
+
 
 
 ## case3
@@ -143,10 +144,11 @@ Percentage of the requests served within a certain time (ms)
  100%    263 (longest request)
 `
 
-Requests per second:    3138.16 [#/sec] (mean)
-Time per request:       111.530 [ms] (mean)
-Time per request:       0.319 [ms] (mean, across all concurrent requests)
-Transfer rate:          981100.26 [Kbytes/sec] received
+1. Requests per second:    3138.16 [#/sec] (mean)
+1. Time per request:       111.530 [ms] (mean)
+1. Time per request:       0.319 [ms] (mean, across all concurrent requests)
+1. Transfer rate:          981100.26 [Kbytes/sec] received
+
 
 ## case4
 - 3 go servers (8080,8081,8082)
@@ -193,7 +195,8 @@ Percentage of the requests served within a certain time (ms)
  100%    217 (longest request)
 `
 
-Requests per second:    2997.00 [#/sec] (mean)
-Time per request:       116.783 [ms] (mean)
-Time per request:       0.334 [ms] (mean, across all concurrent requests)
-Transfer rate:          936970.86 [Kbytes/sec] received
+1. Requests per second:    2997.00 [#/sec] (mean)
+1. Time per request:       116.783 [ms] (mean)
+1. Time per request:       0.334 [ms] (mean, across all concurrent requests)
+1. Transfer rate:          936970.86 [Kbytes/sec] received
+
