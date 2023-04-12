@@ -8,7 +8,6 @@ import (
 /**
 DISCLAIMER - GOVNOCODE
 - bare http
-- credentials through GET request
 - map instead normal database
 */
 
