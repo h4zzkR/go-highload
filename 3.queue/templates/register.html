@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Register</title>
+</head>
+<body>
+	<h1>Register</h1>
+	{{ if .Message }}
+		<p>{{ .Message }}</p>
+	{{ end }}
+	<form method="post">
+		<label for="email">Email Address:</label>
+		<input type="email" name="email" id="email" required>
+		<br><br>
+		<button type="submit">Send confirmation</button>
+	</form>
+</body>
+</html>
