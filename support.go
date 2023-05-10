@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"crypto/rand"
 	"encoding/base64"
 	"hash/fnv"
+	"log"
+	"os"
+	"time"
 
 	"golang.org/x/net/context"
 
@@ -11,7 +15,47 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	pb "grpc-messenger/proto"
+
+	"github.com/redis/go-redis/v9"
 )
+
+func CacheMessage(client *redis.Client, msg *pb.MSResponse) {
+	// fmt.Print(msg.Timestamp.AsTime().String())
+	key := msg.Message.Name + "\t" + msg.Timestamp.AsTime().Format(time.RFC3339)
+	content := msg.Message.Content
+	ctx := context.Background()
+
+	_, err := client.HSet(ctx, RedisCacheDBName, []string{key, content}).Result()
+	if err != nil {
+		log.Fatalf("Error adding %s", content)
+	}
+}
+
+func UnCacheMessage(client *redis.Client, msg *pb.MSResponse) {
+	// score := float64(msg.Timestamp.AsTime().Unix())
+	// content := msg.Message.Name + "\t" + msg.Message.Content
+	// ctx := context.Background()
+
+	// _, err := client.ZAdd(ctx, "history", redis.Z{Score: score, Member: content}).Result()
+	// if err != nil {
+	// 	log.Fatalf("Error adding %s", content)
+	// }
+}
+
+func GetCachedHistory(client *redis.Client) map[string]string {
+	ctx := context.Background()
+	return client.HGetAll(ctx, RedisCacheDBName).Val()
+}
+
+func readUnderlying(lines chan interface{}) {
+	s := bufio.NewScanner(os.Stdin)
+	for s.Scan() {
+		lines <- s.Text()
+	}
+	lines <- s.Err()
+}
 
 // Sith technique to generate UIDs based on usernames
 // Why: https://auth0.com/learn/token-based-authentication-made-easy
@@ -58,6 +102,8 @@ func StreamInterceptor(
 
 	ctx := context.WithValue(ss.Context(), "authToken", token[0])
 	ctx = context.WithValue(ctx, "username", username[0])
+
+	log.Printf("Interceptor: user %s | token %s", username[0], token[0])
 
 	return handler(srv, &WrappedStream{ss, ctx})
 }

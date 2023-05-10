@@ -10,12 +10,20 @@ option go_package = "./";
 
 service Messenger {
     rpc Login(LoginRequest) returns (LoginResponse) {}
+    rpc Logout(LogoutRequest) returns (LogoutResponse) {}
     rpc MessageStream(stream MSRequest) returns (stream MSResponse) {}
 }
 
 message LoginRequest {
     string password = 1;
     string username = 2;
+}
+
+message LogoutRequest {
+    string username = 2;
+}
+
+message LogoutResponse {
 }
 
 message LoginResponse {

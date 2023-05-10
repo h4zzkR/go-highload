@@ -13,6 +13,8 @@ import (
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/redis/go-redis/v9"
 )
 
 type server struct {
@@ -23,9 +25,9 @@ type server struct {
 	userMessagePipes map[string]chan *pb.MSResponse
 	tell             chan *pb.MSResponse
 
-	userTknsMtx         sync.RWMutex
-	userMessagePipesMtx sync.RWMutex
+	userMapsMtx sync.RWMutex
 
+	redisClient *redis.Client
 	pb.UnimplementedMessengerServer
 }
 
@@ -35,7 +37,11 @@ func NewServer(hostAdrr, password string) *server {
 		password: password,
 
 		tell: make(chan *pb.MSResponse),
-
+		redisClient: redis.NewClient(&redis.Options{
+			Addr:     RedisCacheAddr,
+			Password: RedisCachePass, // no password set
+			DB:       0,              // use default DB
+		}),
 		userMessagePipes: make(map[string]chan *pb.MSResponse),
 		userAuthTkns:     make(map[string]string),
 	}
@@ -67,7 +73,9 @@ func (s *server) Run(ctx context.Context) error {
 	// Wait in Run thread till shutdown
 	<-ctx.Done()
 
-	server.GracefulStop()
+	log.Print("Run is terminating")
+
+	server.Stop()
 	return nil
 }
 
@@ -82,9 +90,22 @@ func (s *server) Login(ctx context.Context, req *pb.LoginRequest) (*pb.LoginResp
 		return nil, err
 	}
 
-	log.Printf("%s has entered session	 with %s token", req.Username, token)
+	log.Printf("%s has entered session with %s token", req.Username, token)
 
 	return &pb.LoginResponse{Token: token}, nil
+}
+
+func (s *server) Logout(ctx context.Context, req *pb.LogoutRequest) (*pb.LogoutResponse, error) {
+
+	err := s.closeUserSession(req.Username)
+
+	if err != nil {
+		return nil, err
+	}
+
+	log.Printf("%s has left session", req.Username)
+
+	return &pb.LogoutResponse{}, nil
 }
 
 /*
@@ -104,17 +125,25 @@ func (s *server) MessageStream(srv pb.Messenger_MessageStreamServer) error {
 
 	log.Printf("User %s started stream", username)
 
-	defer srv.Context().Done()
+	defer func() {
+		log.Printf("Closing stream for user %s", username)
+		srv.Context().Done()
+	}()
 
 	// Get pipe where will put messages
 	thisClientPipe := s.connectPipe(token)
+
+	log.Printf("User %s connected pipe", username)
 
 	// Run processor for this client
 	go s.fromPipeSender(srv, thisClientPipe)
 
 	for {
-		// Got new message:
+		log.Printf("User %s start receiving...", username)
 		request, err := srv.Recv()
+
+		log.Printf("Got new msg from user %s", username)
+
 		if err == io.EOF {
 			return nil
 		}
@@ -124,12 +153,15 @@ func (s *server) MessageStream(srv pb.Messenger_MessageStreamServer) error {
 
 		log.Printf("User %s sent message", username)
 
-		s.tell <- &pb.MSResponse{
+		resp := pb.MSResponse{
 			Timestamp: timestamppb.Now(),
 			Message: &pb.MSResponse_Message{
 				Name:    username,
 				Content: request.Message,
 			}}
+
+		CacheMessage(s.redisClient, &resp)
+		s.tell <- &resp
 
 	}
 
@@ -137,22 +169,40 @@ func (s *server) MessageStream(srv pb.Messenger_MessageStreamServer) error {
 }
 
 func (s *server) newUserSession(username string) (string, error) {
-	s.userTknsMtx.RLock()
 
+	s.userMapsMtx.RLock()
 	if _, found := s.userAuthTkns[username]; found {
 		return "", status.Error(codes.AlreadyExists, "user with that username is already exists in this chat")
 	}
+	s.userMapsMtx.RUnlock()
 
 	authToken := MakeToken(username)
-	s.userAuthTkns[username] = authToken
 
-	s.userTknsMtx.RUnlock()
+	s.userMapsMtx.Lock()
+	s.userAuthTkns[username] = authToken
+	s.userMapsMtx.Unlock()
 
 	return authToken, nil
 }
 
+func (s *server) closeUserSession(username string) error {
+	s.userMapsMtx.Lock()
+	defer s.userMapsMtx.Unlock()
+
+	if token, found := s.userAuthTkns[username]; found {
+		delete(s.userAuthTkns, username)
+		delete(s.userMessagePipes, token)
+	} else {
+		return status.Error(codes.NotFound, "user with that username doesn't exist in this chat")
+	}
+
+	return nil
+}
+
 func (s *server) authorizeRequest(username, authToken string) error {
-	s.userTknsMtx.RLock()
+	s.userMapsMtx.RLock()
+	defer s.userMapsMtx.RUnlock()
+
 	if realToken, found := s.userAuthTkns[username]; !found {
 		return status.Error(codes.NotFound, "user with this username isn't authorized")
 	} else if realToken != authToken {
@@ -166,17 +216,22 @@ func (s *server) authorizeRequest(username, authToken string) error {
 func (s *server) tellRoutine(ctx context.Context) {
 	for {
 		response := <-s.tell
-		s.userMessagePipesMtx.RLock()
+
+		s.userMapsMtx.RLock()
 
 		for _, clientPipe := range s.userMessagePipes {
 			select {
 			case clientPipe <- response:
+			case <-ctx.Done():
+				s.userMapsMtx.RUnlock()
+				return
 			default:
 				// ignore message bcz clientPipe is full
 			}
 		}
 
-		s.userMessagePipesMtx.RUnlock()
+		s.userMapsMtx.RUnlock()
+
 	}
 }
 
@@ -200,7 +255,7 @@ func (s *server) fromPipeSender(srv pb.Messenger_MessageStreamServer, pipe chan 
 }
 
 func (s *server) connectPipe(token string) chan *pb.MSResponse {
-	s.userMessagePipesMtx.Lock()
+	s.userMapsMtx.RLock()
 	pipe, found := s.userMessagePipes[token]
 
 	if !found {
@@ -208,6 +263,6 @@ func (s *server) connectPipe(token string) chan *pb.MSResponse {
 		s.userMessagePipes[token] = pipe
 	}
 
-	s.userMessagePipesMtx.Unlock()
+	s.userMapsMtx.RUnlock()
 	return pipe
 }
