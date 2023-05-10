@@ -158,6 +158,7 @@ func (s *server) MessageStream(srv pb.Messenger_MessageStreamServer) error {
 			Message: &pb.MSResponse_Message{
 				Name:    username,
 				Content: request.Message,
+				Expire: request.Expire,
 			}}
 
 		CacheMessage(s.redisClient, &resp)

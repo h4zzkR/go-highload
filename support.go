@@ -7,6 +7,8 @@ import (
 	"hash/fnv"
 	"log"
 	"os"
+	"sort"
+	"strconv"
 	"time"
 
 	"golang.org/x/net/context"
@@ -19,34 +21,81 @@ import (
 	pb "grpc-messenger/proto"
 
 	"github.com/redis/go-redis/v9"
+	"google.golang.org/protobuf/proto"
 )
 
-func CacheMessage(client *redis.Client, msg *pb.MSResponse) {
-	// fmt.Print(msg.Timestamp.AsTime().String())
-	key := msg.Message.Name + "\t" + msg.Timestamp.AsTime().Format(time.RFC3339)
-	content := msg.Message.Content
-	ctx := context.Background()
+func MakeCacheKey(msg *pb.MSResponse) string {
+	return msg.Message.Name + "\t" + msg.Timestamp.AsTime().Format(time.RFC3339)
+}
 
-	_, err := client.HSet(ctx, RedisCacheDBName, []string{key, content}).Result()
+func CacheMessage(client *redis.Client, msg *pb.MSResponse) {
+	key := MakeCacheKey(msg)
+	data, err := proto.Marshal(msg)
+
+	if err != nil {
+		panic(err)
+	}
+
+	ctx := context.Background()
+	content := msg.Message.Content + "\t" + strconv.Itoa(int(msg.Message.Expire))
+
+	_, err = client.HSet(ctx, RedisCacheDBName, key, data).Result()
+
 	if err != nil {
 		log.Fatalf("Error adding %s", content)
 	}
 }
 
-func UnCacheMessage(client *redis.Client, msg *pb.MSResponse) {
-	// score := float64(msg.Timestamp.AsTime().Unix())
-	// content := msg.Message.Name + "\t" + msg.Message.Content
-	// ctx := context.Background()
-
-	// _, err := client.ZAdd(ctx, "history", redis.Z{Score: score, Member: content}).Result()
-	// if err != nil {
-	// 	log.Fatalf("Error adding %s", content)
-	// }
+func RemoveFromCacheMessage(client *redis.Client, key string) {
+	ctx := context.Background()
+	client.HDel(ctx, RedisCacheDBName, key)
 }
 
 func GetCachedHistory(client *redis.Client) map[string]string {
 	ctx := context.Background()
 	return client.HGetAll(ctx, RedisCacheDBName).Val()
+}
+
+type SortEntry struct {
+	content   *pb.MSResponse
+	timestamp time.Time
+}
+
+func UnCacheSortAllMessages(client *redis.Client) []SortEntry {
+	history := GetCachedHistory(client)
+
+	var sortedMsgs []SortEntry
+
+	for _, value := range history {
+
+		msg := new(pb.MSResponse)
+		err := proto.Unmarshal([]byte(value), msg)
+		if err != nil {
+			panic(err)
+		}
+
+		sortedMsgs = append(sortedMsgs, SortEntry{msg, msg.Timestamp.AsTime()})
+	}
+
+	sort.Slice(sortedMsgs, func(i, j int) bool {
+		return sortedMsgs[i].timestamp.Before(sortedMsgs[j].timestamp)
+	})
+
+	return sortedMsgs
+}
+
+func CheckExpire(client *redis.Client, msg *pb.MSResponse) bool {
+	if msg.Message.Expire == 0 {
+		return false
+	}
+
+	delay := msg.Timestamp.AsTime().Add(time.Second * time.Duration(msg.Message.Expire))
+	if time.Now().Compare(delay) == 1 {
+		RemoveFromCacheMessage(client, MakeCacheKey(msg))
+		return true
+	}
+
+	return false
 }
 
 func readUnderlying(lines chan interface{}) {

@@ -4,9 +4,9 @@ import (
 	"fmt"
 	pb "grpc-messenger/proto"
 	"log"
+	"strconv"
 	"time"
 
-	"sort"
 	"strings"
 
 	"golang.org/x/net/context"
@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
+	// "github.com/inancgumus/screen"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -71,32 +72,12 @@ func (c *client) Run(ctx context.Context) error {
 }
 
 func (c *client) LoadHistory() {
-	history := GetCachedHistory(c.redisClient)
+	msgs := UnCacheSortAllMessages(c.redisClient)
 
-	type historyEntry struct {
-		username  string
-		timestamp time.Time
-		event     string
-	}
-
-	var entries []historyEntry
-	for key, value := range history {
-		parts := strings.Split(key, "\t")
-		username := parts[0]
-		timestampStr := parts[1]
-		timestamp, err := time.Parse(time.RFC3339, timestampStr)
-		if err != nil {
-			panic(err)
+	for _, item := range msgs {
+		if !CheckExpire(c.redisClient, item.content) {
+			c.printMessage(item.timestamp, item.content.Message.Name, item.content.Message.Content)
 		}
-		entries = append(entries, historyEntry{username: username, timestamp: timestamp, event: value})
-	}
-
-	sort.Slice(entries, func(i, j int) bool {
-		return entries[i].timestamp.Before(entries[j].timestamp)
-	})
-
-	for _, entry := range entries {
-		c.printMessage(entry.timestamp, entry.username, entry.event)
 	}
 }
 
@@ -149,7 +130,10 @@ func (c *client) sendRoutine(ctx context.Context, proxy pb.Messenger_MessageStre
 				log.Printf("Scanner failure: %v", err)
 				return err
 			} else {
-				err := proxy.Send(&pb.MSRequest{Message: lineOrErr.(string)})
+
+				msReq := c.parseInput(lineOrErr.(string))
+
+				err := proxy.Send(msReq)
 				if err != nil {
 					log.Printf("Message sending failure: %v", err)
 					return err
@@ -169,10 +153,34 @@ func (c *client) receiveRoutine(proxy pb.Messenger_MessageStreamClient) {
 		}
 
 		// log.Print("RECVMSG: ", in.Timestamp.AsTime(), in.Message.Name, in.Message.Content)
-
+		// log.Print("EXPIRES: ", in.Message.Expire)
 		c.printMessage(in.Timestamp.AsTime(), in.Message.Name, in.Message.Content)
 		c.printPrompt()
 		// TODO error handling
+	}
+}
+
+func (c *client) parseInput(input string) *pb.MSRequest {
+
+	expireTime := time.Second * 0
+
+	if strings.HasPrefix(input, "/time") {
+		parts := strings.Split(input, " ")
+		if len(parts) >= 2 {
+			timerStr := parts[1]
+			timer, err := strconv.Atoi(timerStr)
+			if err == nil {
+				expireTime = time.Duration(timer) * time.Second
+				input = parts[2]
+			} else {
+				// TODO
+			}
+		}
+	}
+
+	return &pb.MSRequest{
+		Message: input,
+		Expire:  uint32(expireTime.Seconds()),
 	}
 }
 

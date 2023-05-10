@@ -32,12 +32,14 @@ message LoginResponse {
 
 message MSRequest {
     string message = 1;
+    uint32 expire = 2; // since moment when message sent
 }
 
 message MSResponse {
     message Message {
         string name    = 1;
         string content = 2;
+        uint32 expire = 3;
     }
 
     google.protobuf.Timestamp timestamp = 3;
