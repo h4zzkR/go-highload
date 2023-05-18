@@ -5,14 +5,9 @@ import (
 	"fmt"
 	"log"
 
+	email "queue/email"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
-
-type MailItem struct {
-	To    string
-	Theme string
-	Body  string
-}
 
 func failOnError(err error, msg string) {
 	if err != nil {
@@ -56,7 +51,7 @@ func prepareDeliveryService(ch *amqp.Channel) <-chan amqp.Delivery {
 
 func delivery(dService <-chan amqp.Delivery) {
 	for m := range dService {
-		mail := MailItem{}
+		mail := email.MailItem{}
 		err := json.Unmarshal(m.Body, &mail)
 		failOnError(err, "Failed to Read Message")
 		fmt.Print(mail)

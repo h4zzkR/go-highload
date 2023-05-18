@@ -16,6 +16,7 @@ const (
 	mQAddr    = "amqp://guest:guest@localhost:5672/"
 	hostname  = "ApertureSciencePortal"
 	jwtSecret = "secretTODO"
+	expiresAtMin = 1
 )
 
 var sessionDb = newDatabase()
@@ -47,7 +48,8 @@ func main() {
 		Handler: mux,
 	}
 
-	fmt.Println("Starting server on port 8080...")
+	fmt.Println("Starting server on", addr, "...")
+	helpInfo()
 	err := srv.ListenAndServe()
 
 	if err != nil {

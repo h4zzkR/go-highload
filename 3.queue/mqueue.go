@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"log"
+	"os"
 	"time"
 
 	email "queue/email"
@@ -56,6 +57,9 @@ func (q *Queue) sendEmail(item email.MailItem) {
 			ContentType: "application/json",
 			Body:        encoded,
 		})
+
+	emailConfig := email.Setup(os.Getenv("MAIL"), os.Getenv("PASSWD"))
+	email.Send([]string{item.To}, item.Theme, item.Body, emailConfig)
 
 	failOnError(err, "Failed to publish a message")
 	log.Printf("Sent %s\n", encoded)
